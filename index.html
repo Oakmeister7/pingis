@@ -2,19 +2,9 @@
 <html lang="sv">
 <head>
 <meta charset="UTF-8">
-<title>Pingis 3D MAX</title>
+<title>Pingis 3D FIXAD</title>
 <style>
-body { margin:0; overflow:hidden; font-family:Arial; }
-
-#menu {
-  position:absolute;
-  top:50%; left:50%;
-  transform:translate(-50%,-50%);
-  background:#fff;
-  padding:20px;
-  text-align:center;
-}
-
+body { margin:0; overflow:hidden; }
 #score {
   position:absolute;
   top:10px;
@@ -22,19 +12,10 @@ body { margin:0; overflow:hidden; font-family:Arial; }
   text-align:center;
   font-size:24px;
   color:white;
-  text-shadow:2px 2px black;
 }
-
-button { padding:10px 20px; margin:5px; }
 </style>
 </head>
 <body>
-
-<div id="menu">
-  <h2>Välj spelare</h2>
-  <button onclick="startGame('Alfred')">Alfred</button>
-  <button onclick="startGame('Theodor')">Theodor</button>
-</div>
 
 <div id="score">0 - 0</div>
 
@@ -42,20 +23,12 @@ button { padding:10px 20px; margin:5px; }
 
 <script>
 let scene, camera, renderer;
-let player, enemy, ball;
-let ballSpeed = {x:0.12, z:0.15};
-let spin = 0;
+let player, enemy, ball, net;
+
+let ballVel = {x:0.1, y:0.2, z:0.15};
 
 let playerScore = 0;
 let enemyScore = 0;
-
-let lastPlayerX = 0;
-
-function startGame(){
-  document.getElementById("menu").style.display = "none";
-  init();
-  animate();
-}
 
 function init(){
   scene = new THREE.Scene();
@@ -79,86 +52,95 @@ function init(){
   );
   scene.add(table);
 
-  // racket (mer realistisk)
-  function createRacket(color){
-    const group = new THREE.Group();
+  // nät
+  net = new THREE.Mesh(
+    new THREE.BoxGeometry(0.1,1,6),
+    new THREE.MeshPhongMaterial({color:0xffffff})
+  );
+  net.position.y = 0.75;
+  scene.add(net);
 
-    const paddle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.5,0.5,0.2,32),
+  // racket
+  function racket(color){
+    return new THREE.Mesh(
+      new THREE.BoxGeometry(1,0.5,0.3),
       new THREE.MeshPhongMaterial({color})
     );
-    paddle.rotation.x = Math.PI/2;
-
-    const handle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.1,0.1,1),
-      new THREE.MeshPhongMaterial({color:0x8b4513})
-    );
-    handle.position.y = -0.8;
-
-    group.add(paddle);
-    group.add(handle);
-    return group;
   }
 
-  player = createRacket(0x0000ff);
+  player = racket(0x0000ff);
   player.position.set(0,0.5,2.5);
   scene.add(player);
 
-  enemy = createRacket(0xff0000);
+  enemy = racket(0xff0000);
   enemy.position.set(0,0.5,-2.5);
   scene.add(enemy);
 
+  // boll
   ball = new THREE.Mesh(
     new THREE.SphereGeometry(0.2,32,32),
     new THREE.MeshPhongMaterial({color:0xffffff})
   );
+  ball.position.y = 1;
   scene.add(ball);
 
   document.addEventListener("mousemove", e=>{
     let x = (e.clientX / window.innerWidth) * 10 - 5;
-    lastPlayerX = player.position.x;
     player.position.x = x;
   });
 }
 
-function resetBall(direction){
-  ball.position.set(0,0.5,0);
-  ballSpeed.x = (Math.random() - 0.5) * 0.3;
-  ballSpeed.z = direction * 0.15;
-  spin = 0;
+function resetBall(dir){
+  ball.position.set(0,1,0);
+  ballVel = {
+    x:(Math.random()-0.5)*0.2,
+    y:0.25,
+    z:dir*0.15
+  };
 }
 
 function updateScore(){
-  document.getElementById("score").innerText = playerScore + " - " + enemyScore;
-
-  if(playerScore >= 11 || enemyScore >= 11){
-    alert("Match slut! " + (playerScore > enemyScore ? "Du vann!" : "Du förlorade!"));
-    location.reload();
-  }
+  document.getElementById("score").innerText = playerScore+" - "+enemyScore;
 }
 
 function animate(){
   requestAnimationFrame(animate);
 
-  // boll rörelse
-  ballSpeed.x += spin * 0.01;
-  ball.position.x += ballSpeed.x;
-  ball.position.z += ballSpeed.z;
+  // gravity
+  ballVel.y -= 0.01;
 
-  // vägg
-  if(ball.position.x > 5 || ball.position.x < -5){
-    ballSpeed.x *= -1;
+  // rörelse
+  ball.position.x += ballVel.x;
+  ball.position.y += ballVel.y;
+  ball.position.z += ballVel.z;
+
+  // studsa på bord
+  if(ball.position.y <= 0.5){
+    ball.position.y = 0.5;
+    ballVel.y *= -0.9;
   }
 
-  // PLAYER HIT (med spin)
+  // väggar
+  if(ball.position.x > 5 || ball.position.x < -5){
+    ballVel.x *= -1;
+  }
+
+  // nät-kollision
+  if(
+    Math.abs(ball.position.z) < 0.1 &&
+    ball.position.y < 1.5
+  ){
+    ballVel.z *= -1;
+  }
+
+  // player hit
   if(
     ball.position.z > 2 &&
-    Math.abs(ball.position.x - player.position.x) < 1
+    Math.abs(ball.position.x - player.position.x) < 1 &&
+    ball.position.y < 1.5
   ){
-    ballSpeed.z *= -1;
-
-    // spin baserat på rörelse
-    spin = (player.position.x - lastPlayerX) * 0.5;
+    ballVel.z *= -1;
+    ballVel.y = 0.25;
   }
 
   // AI
@@ -166,10 +148,11 @@ function animate(){
 
   if(
     ball.position.z < -2 &&
-    Math.abs(ball.position.x - enemy.position.x) < 1
+    Math.abs(ball.position.x - enemy.position.x) < 1 &&
+    ball.position.y < 1.5
   ){
-    ballSpeed.z *= -1;
-    spin = 0;
+    ballVel.z *= -1;
+    ballVel.y = 0.25;
   }
 
   // poäng
@@ -188,8 +171,9 @@ function animate(){
   renderer.render(scene,camera);
 }
 
-// start boll
-setTimeout(()=>resetBall(1), 500);
+init();
+resetBall(1);
+animate();
 </script>
 
 </body>
